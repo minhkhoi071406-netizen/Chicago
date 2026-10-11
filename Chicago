@@ -1,0 +1,462 @@
+-- ==================== HEOSIGMA KILL ALL (CHICAGO LIFE - FULL UPDATE) ====================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+local UIModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ValueHat-Script/Valuehat-script/refs/heads/main/ValueHatGui4.lua"))()
+
+-- Biến chức năng
+local speedRunEnabled = false
+local noclipEnabled = false
+
+local autoFarmPromptEnabled = false
+local infiniteAmmoEnabled = false
+
+local espBoxesEnabled = false
+local espTracersEnabled = false
+local espNameHpEnabled = false
+
+-- Hitbox Không giới hạn
+local hitboxEnabled = false
+local hitboxSize = 50 
+
+-- Biến Aimbot & FOV
+local aimHeadEnabled = false
+local aimWallCheckEnabled = true      
+local aimSmoothnessEnabled = true     
+local smoothnessValue = 0.2           
+local fovSize = 100
+
+-- Biến Kill All Fly & Skip Player
+local killAllFlyEnabled = false
+local skyHeight = 50                  -- Độ cao bay trên trời
+local flySpeed = 50                   -- Tốc độ bay ngang
+local skippedPlayers = {}            -- Danh sách người chơi bị bỏ qua (vùng an toàn)
+
+local spinEnabled = false
+local godmodEnabled = false
+
+local originalCanCollide = {}
+local espCache = {}
+
+local function cleanESP(plr)
+    if espCache[plr] then
+        if espCache[plr].Box then espCache[plr].Box:Remove() end
+        if espCache[plr].Tracer then espCache[plr].Tracer:Remove() end
+        if espCache[plr].Billboard then espCache[plr].Billboard:Destroy() end
+        espCache[plr] = nil
+    end
+end
+
+-- ==================== HÀM KIỂM TRA MỤC TIÊU ====================
+local function isPartVisible(targetPart, character)
+    local origin = Camera.CFrame.Position
+    local destination = targetPart.Position
+    local direction = destination - origin
+
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = RaycastFilterType.Exclude
+    
+    local ignoreList = {Camera}
+    if LocalPlayer.Character then table.insert(ignoreList, LocalPlayer.Character) end
+    if character then table.insert(ignoreList, character) end
+    
+    raycastParams.FilterDescendantsInstances = ignoreList
+    raycastParams.IgnoreWater = true
+
+    local result = Workspace:Raycast(origin, direction, raycastParams)
+    return result == nil
+end
+
+local function getClosestTarget()
+    local closestTarget = nil
+    local shortestDist = math.huge
+    
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and not skippedPlayers[plr] and plr.Character and plr.Character:FindFirstChild("Head") and plr.Character:FindFirstChildOfClass("Humanoid") and plr.Character.Humanoid.Health > 0 then
+            local head = plr.Character.Head
+            local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if myRoot then
+                local dist = (Vector2.new(myRoot.Position.X, myRoot.Position.Z) - Vector2.new(head.Position.X, head.Position.Z)).Magnitude
+                if dist < shortestDist then
+                    shortestDist = dist
+                    closestTarget = head
+                end
+            end
+        end
+    end
+    return closestTarget
+end
+
+-- ==================== 1. SPEEDRUN & NOCLIP ====================
+RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    if char then
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        
+        if humanoid and root and speedRunEnabled then
+            if humanoid.MoveDirection.Magnitude > 0 then
+                root.CFrame = root.CFrame + (humanoid.MoveDirection * (20 * 0.05))
+            end
+        end
+
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                if noclipEnabled or killAllFlyEnabled then
+                    if originalCanCollide[part] == nil then
+                        originalCanCollide[part] = part.CanCollide
+                    end
+                    part.CanCollide = false
+                else
+                    if originalCanCollide[part] ~= nil then
+                        part.CanCollide = originalCanCollide[part]
+                        originalCanCollide[part] = nil
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ==================== 2. KILL ALL FLY (BAY NGANG TRÊN TRỜI ĐẾN ĐỊCH) ====================
+RunService.Heartbeat:Connect(function(deltaTime)
+    if killAllFlyEnabled then
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if root then
+            root.Velocity = Vector3.new(0, 0, 0)
+            local targetHead = getClosestTarget()
+            
+            local targetX = root.Position.X
+            local targetZ = root.Position.Z
+            
+            if targetHead then
+                targetX = targetHead.Position.X
+                targetZ = targetHead.Position.Z
+                -- Xoay Camera nhắm vào đầu đối thủ
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetHead.Position)
+            end
+            
+            local targetPos = Vector3.new(targetX, skyHeight, targetZ)
+            local currentPos = Vector3.new(root.Position.X, skyHeight, root.Position.Z)
+            
+            local direction = (targetPos - currentPos)
+            if direction.Magnitude > 1 then
+                local moveStep = direction.Unit * (flySpeed * deltaTime)
+                if moveStep.Magnitude > direction.Magnitude then
+                    moveStep = direction
+                end
+                root.CFrame = CFrame.new(currentPos + moveStep)
+            else
+                root.CFrame = CFrame.new(targetPos)
+            end
+        end
+    end
+end)
+
+-- ==================== 3. AUTO FARM PROMPT ====================
+task.spawn(function()
+    while true do
+        if autoFarmPromptEnabled then
+            pcall(function()
+                local char = LocalPlayer.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                if root then
+                    for _, descendant in pairs(Workspace:GetDescendants()) do
+                        if descendant:IsA("ProximityPrompt") then
+                            descendant.HoldDuration = 0
+                            local promptPart = descendant.Parent
+                            if promptPart and promptPart:IsA("BasePart") then
+                                if (root.Position - promptPart.Position).Magnitude <= 15 then
+                                    fireproximityprompt(descendant)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+        task.wait(0.2)
+    end
+end)
+
+-- ==================== 4. VÔ HẠN ĐẠN & NẠP ĐẠN TỨC THÌ ====================
+task.spawn(function()
+    while true do
+        if infiniteAmmoEnabled or killAllFlyEnabled then
+            task.wait(0.1)
+            pcall(function()
+                local maxInfVal = 999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
+                if getgc and setreadonly and rawset then
+                    for _, obj in next, getgc(true) do
+                        if type(obj) == "table" then
+                            if rawget(obj, "Ammo") then
+                                if isreadonly(obj) then setreadonly(obj, false) end
+                                rawset(obj, "Ammo", maxInfVal)
+                            end
+                            if rawget(obj, "ReloadTime") then
+                                if isreadonly(obj) then setreadonly(obj, false) end
+                                rawset(obj, "ReloadTime", 0)
+                            end
+                            if rawget(obj, "Cooldown") then
+                                if isreadonly(obj) then setreadonly(obj, false) end
+                                rawset(obj, "Cooldown", 0)
+                            end
+                        end
+                    end
+                end
+            end)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+-- ==================== 5. ESP ====================
+RunService.RenderStepped:Connect(function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local char = p.Character
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            
+            if hrp and humanoid and humanoid.Health > 0 then
+                if not espCache[p] then
+                    espCache[p] = {
+                        Box = Drawing.new("Square"),
+                        Tracer = Drawing.new("Line"),
+                        Billboard = nil
+                    }
+                    espCache[p].Box.Visible = false
+                    espCache[p].Box.Thickness = 1.5
+                    espCache[p].Box.Color = Color3.fromRGB(255, 50, 50)
+                    espCache[p].Box.Filled = false
+
+                    espCache[p].Tracer.Visible = false
+                    espCache[p].Tracer.Thickness = 1.5
+                    espCache[p].Tracer.Color = Color3.fromRGB(255, 255, 255)
+                end
+
+                local cache = espCache[p]
+                local vector, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+
+                if onScreen and espBoxesEnabled then
+                    cache.Box.Visible = true
+                    cache.Box.Size = Vector2.new(2500 / vector.Z, 3500 / vector.Z)
+                    cache.Box.Position = Vector2.new(vector.X - cache.Box.Size.X / 2, vector.Y - cache.Box.Size.Y / 2)
+                else
+                    cache.Box.Visible = false
+                end
+
+                if onScreen and espTracersEnabled then
+                    cache.Tracer.Visible = true
+                    cache.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                    cache.Tracer.To = Vector2.new(vector.X, vector.Y)
+                else
+                    cache.Tracer.Visible = false
+                end
+
+                if espNameHpEnabled then
+                    if not cache.Billboard or not cache.Billboard.Parent then
+                        local billboard = Instance.new("BillboardGui")
+                        billboard.Name = "HeosigmaESP_NameHP"
+                        billboard.Size = UDim2.new(0, 150, 0, 50)
+                        billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+                        billboard.AlwaysOnTop = true
+                        billboard.Parent = char
+                        
+                        local textLbl = Instance.new("TextLabel")
+                        textLbl.Name = "InfoText"
+                        textLbl.Size = UDim2.new(1, 0, 1, 0)
+                        textLbl.BackgroundTransparency = 1
+                        textLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+                        textLbl.TextStrokeTransparency = 0
+                        textLbl.TextSize = 13
+                        textLbl.Font = Enum.Font.GothamBold
+                        textLbl.Parent = billboard
+                        
+                        cache.Billboard = billboard
+                    end
+                    
+                    local textLbl = cache.Billboard:FindFirstChild("InfoText")
+                    if textLbl then
+                        textLbl.Text = string.format("%s\nHP: %d / %d", p.Name, math.floor(humanoid.Health), math.floor(humanoid.MaxHealth))
+                    end
+                else
+                    if cache.Billboard then
+                        cache.Billboard:Destroy()
+                        cache.Billboard = nil
+                    end
+                end
+            else
+                cleanESP(p)
+            end
+        else
+            cleanESP(p)
+        end
+    end
+end)
+
+-- ==================== 6. HITBOX ĐẦU SIÊU TO (UNLIMITED) ====================
+RunService.RenderStepped:Connect(function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local head = p.Character:FindFirstChild("Head")
+            local root = p.Character:FindFirstChild("HumanoidRootPart")
+            
+            if root then
+                root.Size = Vector3.new(2, 2, 1)
+                root.Transparency = 1
+            end
+
+            if head then
+                if hitboxEnabled or killAllFlyEnabled then
+                    head.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                    head.Color = Color3.fromRGB(0, 255, 100)
+                    head.Material = Enum.Material.Neon
+                    head.Transparency = 0.6
+                    head.CanCollide = false
+                else
+                    head.Size = Vector3.new(1.2, 1, 1)
+                    head.Transparency = 0
+                end
+            end
+        end
+    end
+end)
+
+-- ==================== 7. CAMERA AIMBOT & VÒNG FOV ====================
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Visible = false
+FOVCircle.Filled = false
+FOVCircle.Thickness = 1.5
+FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+FOVCircle.Transparency = 0.8
+
+RunService.RenderStepped:Connect(function()
+    if aimHeadEnabled then
+        FOVCircle.Visible = true
+        FOVCircle.Radius = fovSize
+        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        
+        local closestTarget = getClosestTarget()
+        if closestTarget then
+            local targetCFrame = CFrame.new(Camera.CFrame.Position, closestTarget.Position)
+            if aimSmoothnessEnabled then
+                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, smoothnessValue)
+            else
+                Camera.CFrame = targetCFrame
+            end
+        end
+    else
+        FOVCircle.Visible = false
+    end
+end)
+
+-- ==================== 8. SPIN SIÊU NHANH & GODMOD ====================
+task.spawn(function()
+    while true do
+        if spinEnabled then
+            pcall(function()
+                local char = LocalPlayer.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                if root then
+                    root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(60), 0)
+                end
+            end)
+        end
+        task.wait()
+    end
+end)
+
+RunService.Stepped:Connect(function()
+    if godmodEnabled then
+        pcall(function()
+            local char = LocalPlayer.Character
+            local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid.Health = humanoid.MaxHealth
+            end
+        end)
+    end
+end)
+
+-- ==================== TẠO GIAO DIỆN VALUEHAT GUI ====================
+local Hub = UIModule.CreateWindow("Heosigma Kill All", "TikTok: nhavuafifai")
+
+task.spawn(function()
+    task.wait(0.1)
+    local mainGui = CoreGui:FindFirstChild("Apex_V90_Sea")
+    if mainGui then
+        local mainFrame = mainGui:FindFirstChildWhichIsA("Frame", true)
+        if mainFrame then
+            mainFrame.BackgroundColor3 = Color3.fromRGB(12, 20, 15)
+            mainFrame.BackgroundTransparency = 0.35
+            local stroke = mainFrame:FindFirstChildWhichIsA("UIStroke")
+            if stroke then
+                stroke.Color = Color3.fromRGB(0, 255, 100)
+                stroke.Thickness = 3
+            end
+        end
+    end
+end)
+
+-- Thêm các tính năng vào Menu UI
+Hub:CreateToggle("🚁 Kill All Fly (Bay ngang tìm người)", false, function(on) killAllFlyEnabled = on end)
+
+-- Nút Bỏ qua mục tiêu vùng an toàn
+Hub:CreateButton("⏭️ Bỏ qua mục tiêu hiện tại", function()
+    local targetHead = getClosestTarget()
+    if targetHead and targetHead.Parent then
+        local targetPlr = Players:GetPlayerFromCharacter(targetHead.Parent)
+        if targetPlr then
+            skippedPlayers[targetPlr] = true
+        end
+    end
+end)
+
+Hub:CreateButton("🔄 Đặt lại danh sách bỏ qua", function()
+    skippedPlayers = {}
+end)
+
+Hub:CreateSlider("Độ Cao Trên Trời (Studs)", 20, 200, 50, function(val) skyHeight = val end)
+Hub:CreateSlider("Tốc Độ Bay Ngang", 10, 200, 50, function(val) flySpeed = val end)
+
+Hub:CreateToggle("SpeedRun (Tốc độ 20)", false, function(on) speedRunEnabled = on end)
+Hub:CreateToggle("Noclip (Xuyên Tường)", false, function(on) noclipEnabled = on end)
+
+Hub:CreateToggle("Auto Farm Tiền (Prompt)", false, function(on) autoFarmPromptEnabled = on end)
+Hub:CreateToggle("🔫 VÔ HẠN ĐẠN & NẠP ĐẠN TỨC THÌ (0.0s)", false, function(on) infiniteAmmoEnabled = on end)
+
+Hub:CreateToggle("ESP Hộp (Box)", false, function(on)
+    espBoxesEnabled = on
+    if not on then for _, p in ipairs(Players:GetPlayers()) do cleanESP(p) end end
+end)
+Hub:CreateToggle("ESP Tia Dây (Tracer)", false, function(on)
+    espTracersEnabled = on
+    if not on then for _, p in ipairs(Players:GetPlayers()) do cleanESP(p) end end
+end)
+Hub:CreateToggle("ESP Máu & Tên", false, function(on)
+    espNameHpEnabled = on
+    if not on then for _, p in ipairs(Players:GetPlayers()) do cleanESP(p) end end
+end)
+
+-- Hitbox Đầu Siêu To (1 - 300)
+Hub:CreateToggle("Hitbox Đầu (Xanh Lá)", false, function(on) hitboxEnabled = on end)
+Hub:CreateSlider("Kích Thước Hitbox Đầu", 1, 300, 50, function(val) hitboxSize = val end)
+
+-- Menu Aimbot
+Hub:CreateToggle("Aimbot Aim Head", false, function(on) aimHeadEnabled = on end)
+Hub:CreateToggle("Aimbot Wall Check (Kiểm tra tường)", true, function(on) aimWallCheckEnabled = on end)
+Hub:CreateToggle("Aimbot Smoothness (Mượt)", true, function(on) aimSmoothnessEnabled = on end)
+Hub:CreateSlider("Mức độ mượt (%)", 1, 100, 20, function(val) smoothnessValue = val / 100 end)
+Hub:CreateSlider("Kích Thước Vòng FOV", 0, 360, 100, function(val) fovSize = val end)
+
+Hub:CreateToggle("Spin Siêu Nhanh", false, function(on) spinEnabled = on end)
+Hub:CreateToggle("Godmod (Bất tử)", false, function(on) godmodEnabled = on end)
